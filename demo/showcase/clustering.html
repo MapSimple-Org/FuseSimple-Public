@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FuseSimple — PNW Clustering</title>
+
+    <!--
+      FuseSimple Clustering Demo
+      ===========================
+      Demonstrates Esri's built-in feature clustering on top of a
+      FuseSimple PMTiles basemap. Power plant data from ArcGIS Online
+      is clustered with Arcade expressions that filter and aggregate
+      coal-fueled plants within each cluster.
+
+      Based on the Esri sample:
+      https://developers.arcgis.com/javascript/latest/sample-code/featurereduction-cluster-popup-filter/
+
+      Stack:
+        - Esri Maps SDK 5.0 (loaded from CDN)
+        - FuseSimple standalone bundle (includes MapLibre + PMTiles)
+        - PNW PMTiles basemap hosted on tiles.mapsimple.org
+
+      PMTiles archive: pnw.pmtiles (~1.2 GB)
+        - Bounds: -124.85, 41.99 -> -111.04, 49.00 (WA, OR, ID + slivers
+          of northern CA/NV and western MT)
+        - Zoom: 0-15
+        - Center: (-117.945, 45.495), eastern Oregon / SW Idaho border
+        - ~1.5M addressed tiles, ~1.21M unique tiles
+        - Built with Planetiler from OSM replication (Apr 2026)
+        - Largest of the three demo archives (~6x the LA archive);
+          covers the full region because the power plant dataset spans
+          the whole Pacific Northwest
+
+      No build tools required. This is a single HTML file.
+    -->
+
+    <link rel="stylesheet" href="https://js.arcgis.com/5.0/esri/themes/light/main.css" />
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <!--
+      Start fetching the FuseSimple bundle immediately, in parallel with
+      the Esri SDK, instead of waiting until the <script type="module">
+      down in <body> is reached. Shortens the cold-load gap where the
+      user sees the bare Esri basemap before FuseSimple mounts.
+
+      modulepreload (not preload as="script") is the right directive for
+      ES modules. The ?v= cache-buster here must match the one on the
+      import line below or the preload and import resolve to different
+      cache entries.
+    -->
+    <link rel="modulepreload" href="https://fusesimple.mapsimple.org/dist/fusesimple.min.js?v=0.14.1" />
+
+    <style>
+      html, body, #viewDiv {
+        height: 100%;
+        margin: 0;
+      }
+      body { font-family: "Avenir Next", "Helvetica Neue", sans-serif; }
+
+      /* ---- Title bar ---- */
+      #titleBar {
+        position: absolute;
+        top: 15px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 50;
+        background: white;
+        padding: 10px 14px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.25);
+        pointer-events: none;
+        text-align: center;
+      }
+      #titleBar h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1.3;
+      }
+      #titleBar h2 {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 400;
+        color: #555;
+        line-height: 1.3;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="viewDiv"></div>
+
+    <!-- Title bar — centered, non-interactive overlay -->
+    <div id="titleBar">
+      <h1>Feature Clustering Demo</h1>
+      <h2>Pacific Northwest Power Plants</h2>
+    </div>
+
+    <script type="module">
+      // FuseSimple CDN bundle — version-pinned so cache busts on upgrades.
+      import { FuseSimple } from "https://fusesimple.mapsimple.org/dist/fusesimple.min.js?v=0.14.1";
+
+      // Hosts: tile archives on tiles.mapsimple.org;
+      // styles and library on fusesimple.mapsimple.org.
+      var TILES = "https://tiles.mapsimple.org";
+      var FUSESIMPLE = "https://fusesimple.mapsimple.org";
+
+      // ---- Import modules using the same paths as the Esri sample ----
+      var [MapView, EsriMap, FeatureLayer, Legend, Expand, Home, clusterLabelCreator] =
+        await $arcgis.import([
+          "@arcgis/core/views/MapView.js",
+          "@arcgis/core/Map.js",
+          "@arcgis/core/layers/FeatureLayer.js",
+          "@arcgis/core/widgets/Legend.js",
+          "@arcgis/core/widgets/Expand.js",
+          "@arcgis/core/widgets/Home.js",
+          "@arcgis/core/smartMapping/labels/clusters.js"
+        ]);
+
+      // ---- Power plants FeatureLayer from ArcGIS Online ----
+      var layer = new FeatureLayer({
+        portalItem: { id: "eb54b44c65b846cca12914b87b315169" }
+      });
+
+      // ---- Map + View ----
+      // Start with NO layers and no Esri basemap. FuseSimple drives
+      // view init when FuseSimple.create() runs, so we don't need a
+      // basemap to bootstrap Esri. The power plants layer is added
+      // *after* FuseSimple.create() resolves — adding it before
+      // would let its extent override the consumer's center/zoom.
+      var map = new EsriMap({ layers: [] });
+
+      var view = new MapView({
+        container: "viewDiv",
+        map: map,
+        center: [-120.5, 46.0],
+        zoom: 6,
+        spatialReference: { wkid: 3857 },
+        popup: { dockEnabled: false }
+      });
+
+      // ---- Home widget ----
+      view.ui.add(new Home({ view: view }), "top-left");
+
+      // ---- Basemap: Protomaps Light on PNW PMTiles ----
+      var res = await fetch(FUSESIMPLE + "/assets/json/protomaps-light-full.json");
+      var style = await res.json();
+      style.sources.protomaps.url = "pmtiles://" + TILES + "/pnw.pmtiles";
+
+      // ---- FuseSimple.create() ----
+      var fuse = await FuseSimple.create({
+        basemap: {
+          engine: "maplibre",
+          source: TILES + "/pnw.pmtiles",
+          style: style
+        },
+        operational: {
+          engine: "esri",
+          view: view
+        }
+      });
+
+      // Now that the view is initialized at PNW zoom 6, add the
+      // operational layer. Adding it before FuseSimple.create()
+      // would let its extent fight the consumer's center/zoom.
+      map.add(layer);
+
+      // ---- Clustering configuration ----
+      await layer.when();
+
+
+      var popupTemplate = {
+        title: "Power Plant Cluster",
+        content:
+          "<p>This cluster represents <b>{cluster_count}</b> power plants. " +
+          "<b>{expression/Coal-count}</b> of these plants are fueled by Coal.</p>" +
+          "<p>Coal plants produce <b>{expression/Coal-mw-sum}</b> of the total " +
+          "power generated in this cluster.</p>",
+        expressionInfos: [
+          {
+            name: "Coal-count",
+            title: "Coal-count",
+            expression: "Count(Filter($aggregatedFeatures, \"fuel1 = 'Coal'\"))"
+          },
+          {
+            name: "Coal-mw-sum",
+            title: "Coal-mw-sum",
+            expression:
+              "Expects($aggregatedFeatures, 'capacity_mw')\n" +
+              "var mWtotal = Sum($aggregatedFeatures, 'capacity_mw');\n" +
+              "var mWCoal = Sum(Filter($aggregatedFeatures, \"fuel1 = 'Coal'\"), 'capacity_mw');\n" +
+              "if(mWCoal < 1){ return 'none'; }\n" +
+              "var mWratio = Round(mWCoal / mWtotal, 4);\n" +
+              "return Text(mWratio, '#.#%') + ' (' + Text(mWCoal, '#,### mW') + ')';"
+          }
+        ]
+      };
+
+      var labelSchemes = await clusterLabelCreator.getLabelSchemes({
+        layer: layer,
+        view: view
+      });
+      var scheme = labelSchemes.primaryScheme;
+
+      layer.featureReduction = {
+        type: "cluster",
+        popupTemplate: popupTemplate,
+        labelingInfo: scheme.labelingInfo,
+        clusterMinSize: scheme.clusterMinSize,
+        maxScale: 50000
+      };
+
+      // ---- Legend widget ----
+      // Exactly as the Esri sample: Expand + Legend, top-right.
+      view.ui.add(
+        new Expand({
+          content: new Legend({ view: view }),
+          view: view
+        }),
+        "top-right"
+      );
+    </script>
+  </body>
+</html>

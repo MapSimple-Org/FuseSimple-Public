@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FuseSimple — LA Real-Time Buses</title>
+
+    <!--
+      FuseSimple Real-Time StreamLayer Demo
+      =======================================
+      Demonstrates Esri's StreamLayer (real-time WebSocket data) on a
+      FuseSimple PMTiles basemap. Fictitious LA Metro bus positions
+      stream in from Esri's GeoEvent sample server.
+
+      Features:
+        - Rotated chevron markers showing direction of travel (heading)
+        - Color-coded by route (deterministic hash into 12-color palette)
+        - Trail system: previous positions rendered as faded circles
+        - Live stats panel: bus count, route count, active vs stale
+        - Connection status indicator
+        - Click popup with bus details
+
+      Stack:
+        - Esri Maps SDK 5.0 (loaded from CDN)
+        - FuseSimple standalone bundle (includes MapLibre + PMTiles)
+        - LA metro PMTiles basemap hosted on tiles.mapsimple.org
+        - Esri GeoEvent sample StreamServer (fictitious LA bus data)
+
+      PMTiles archive: la.pmtiles (~199 MB)
+        - Bounds: -118.95, 33.70 -> -117.65, 34.35 (LA metro — Santa
+          Monica east to San Bernardino, Long Beach north to the
+          San Fernando Valley)
+        - Zoom: 0-15
+        - Center: (-118.30, 34.025), just south of downtown LA
+        - ~11.7K addressed tiles, ~9.5K unique tiles
+        - Built with Planetiler from OSM replication (Apr 2026,
+          freshest of the three demo archives)
+        - Covers the full StreamLayer bus extent; dense urban detail
+
+      No build tools required. This is a single HTML file.
+    -->
+
+    <link rel="stylesheet" href="https://js.arcgis.com/5.0/esri/themes/light/main.css" />
+    <script type="module" src="https://js.arcgis.com/5.0/"></script>
+
+    <!--
+      Start fetching the FuseSimple bundle immediately, in parallel with
+      the Esri SDK, instead of waiting until the <script type="module">
+      down in <body> is reached. Shortens the cold-load gap where the
+      user sees the bare Esri basemap before FuseSimple mounts.
+
+      modulepreload (not preload as="script") is the right directive for
+      ES modules. The ?v= cache-buster here must match the one on the
+      import line below or the preload and import resolve to different
+      cache entries.
+    -->
+    <link rel="modulepreload" href="https://fusesimple.mapsimple.org/dist/fusesimple.min.js?v=0.14.1" />
+
+    <style>
+      html, body, #viewDiv {
+        height: 100%;
+        margin: 0;
+      }
+      body { font-family: "Avenir Next", "Helvetica Neue", sans-serif; }
+
+      /* ---- Title bar ---- */
+      #titleBar {
+        position: absolute;
+        top: 15px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 50;
+        background: white;
+        padding: 10px 14px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.25);
+        pointer-events: none;
+        text-align: center;
+      }
+      #titleBar h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1.3;
+      }
+      #titleBar h2 {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 400;
+        color: #555;
+        line-height: 1.3;
+      }
+
+      /* ---- Stats panel ---- */
+      #statsPanel {
+        position: absolute;
+        bottom: 30px;
+        right: 15px;
+        z-index: 50;
+        background: white;
+        padding: 10px 14px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.25);
+        font-size: 13px;
+        min-width: 180px;
+      }
+      #statsPanel h3 {
+        margin: 0 0 6px 0;
+        font-size: 14px;
+        font-weight: 600;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #statsPanel h3 .chevron {
+        font-size: 10px;
+        color: #999;
+        transition: transform 0.2s;
+      }
+      #statsPanel.collapsed h3 { margin-bottom: 0; }
+      #statsPanel.collapsed h3 .chevron { transform: rotate(180deg); }
+      #statsPanel.collapsed .stats-body { display: none; }
+      .stat {
+        display: flex;
+        justify-content: space-between;
+        padding: 2px 0;
+      }
+      .stat-label { color: #555; }
+      .stat-value { font-weight: 600; }
+      .status {
+        margin-top: 6px;
+        padding-top: 6px;
+        border-top: 1px solid #eee;
+        font-size: 11px;
+      }
+      .status-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 4px;
+        vertical-align: middle;
+      }
+      .status-dot.connected { background: #3cb44b; }
+      .status-dot.disconnected { background: #e6194b; }
+      .status-dot.connecting { background: #f58231; }
+
+      /* ---- Toggle button ---- */
+      #toggleBtn {
+        display: block;
+        width: 100%;
+        margin-top: 8px;
+        padding: 6px 5px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        background: white;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #toggleBtn:hover { background: #f5f5f5; }
+      #toggleBtn.active { color: #e6194b; border-color: #e6194b; }
+
+      @media (max-width: 600px) {
+        #titleBar { top: 10px; font-size: 0.9em; }
+        #statsPanel {
+          top: 100px;
+          right: 10px;
+          bottom: auto;
+          min-width: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="viewDiv"></div>
+
+    <!-- Title bar -->
+    <div id="titleBar">
+      <h1>Real-Time StreamLayer Demo</h1>
+      <h2>Los Angeles Buses</h2>
+    </div>
+
+    <!-- Live stats panel -->
+    <div id="statsPanel">
+      <h3>Live Stats <span class="chevron">&#9650;</span></h3>
+      <div class="stats-body">
+        <div class="stat">
+          <span class="stat-label">Buses</span>
+          <span class="stat-value" id="busCount">&mdash;</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Routes</span>
+          <span class="stat-value" id="routeCount">&mdash;</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Active</span>
+          <span class="stat-value" id="activeCount">&mdash;</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Stale</span>
+          <span class="stat-value" id="staleCount">&mdash;</span>
+        </div>
+        <div class="status">
+          <span class="status-dot connecting" id="statusDot"></span>
+          <span id="statusText">Connecting...</span>
+        </div>
+        <button id="toggleBtn" class="active">Remove stream layer</button>
+      </div>
+    </div>
+
+    <script type="module">
+      var TILES = "https://tiles.mapsimple.org";
+      var FUSESIMPLE = "https://fusesimple.mapsimple.org";
+
+      // ----------------------------------------------------------------
+      // FuseSimple standalone bundle — includes MapLibre GL JS + PMTiles.
+      // ----------------------------------------------------------------
+      // Static ES `import` requires a string literal, so the hostname
+      // is inlined here rather than using the FUSESIMPLE variable.
+      // Runtime fetches below use the variable.
+      import { FuseSimple } from "https://fusesimple.mapsimple.org/dist/fusesimple.min.js?v=0.14.1";
+
+      // Stats panel collapse toggle — collapsed by default on mobile
+      var statsPanel = document.getElementById("statsPanel");
+      if (window.innerWidth <= 600) {
+        statsPanel.classList.add("collapsed");
+      }
+      statsPanel.querySelector("h3").addEventListener("click", function () {
+        statsPanel.classList.toggle("collapsed");
+      });
+
+      // ----------------------------------------------------------------
+      // Route color palette
+      // ----------------------------------------------------------------
+      // 12 distinct colors. Each route_id is hashed to a palette index
+      // via simple modulo so every route gets a deterministic color.
+      // Some routes may share a color — acceptable for a demo with
+      // dozens of routes.
+      var PALETTE = [
+        "#e6194b", "#3cb44b", "#4363d8", "#f58231",
+        "#911eb4", "#42d4f4", "#f032e6", "#bfef45",
+        "#469990", "#e6beff", "#9A6324", "#000075"
+      ];
+
+      function routeColor(routeId) {
+        return PALETTE[Number(routeId) % PALETTE.length];
+      }
+
+      // Chevron marker symbol — arrow shape rotated by heading.
+      // The path draws an upward-pointing arrow; Esri's rotation
+      // visual variable spins it to match direction of travel.
+      function chevronSymbol(color) {
+        return {
+          type: "simple-marker",
+          path: "M 0,-8 L 5,5 L 0,1 L -5,5 Z",
+          size: 14,
+          color: color,
+          outline: { color: "white", width: 0.5 }
+        };
+      }
+
+      // ---- Import Esri modules ----
+      var [MapView, EsriMap, StreamLayer, GraphicsLayer, Graphic, Home] =
+        await $arcgis.import([
+          "@arcgis/core/views/MapView.js",
+          "@arcgis/core/Map.js",
+          "@arcgis/core/layers/StreamLayer.js",
+          "@arcgis/core/layers/GraphicsLayer.js",
+          "@arcgis/core/Graphic.js",
+          "@arcgis/core/widgets/Home.js"
+        ]);
+
+      // ----------------------------------------------------------------
+      // Route color renderer
+      // ----------------------------------------------------------------
+      // An Arcade expression hashes route_id to a palette index (0-11).
+      // Each index maps to a chevron symbol with the corresponding
+      // palette color. The rotation visual variable spins each chevron
+      // to match the bus's heading.
+      var uniqueValueInfos = PALETTE.map(function (color, i) {
+        return { value: i, symbol: chevronSymbol(color) };
+      });
+
+      var busRenderer = {
+        type: "unique-value",
+        valueExpression: "Number($feature.route_id) % " + PALETTE.length,
+        uniqueValueInfos: uniqueValueInfos,
+        defaultSymbol: chevronSymbol("#aaaaaa"),
+        visualVariables: [
+          { type: "rotation", field: "heading", rotationType: "geographic" }
+        ]
+      };
+
+      // ----------------------------------------------------------------
+      // StreamLayer: fictitious LA bus positions from Esri GeoEvent
+      // ----------------------------------------------------------------
+      // The service streams bus positions via WebSocket. Each bus is
+      // identified by `id`; the service's trackIdField ensures only the
+      // latest position per bus is shown. Previous positions are managed
+      // separately in a trail GraphicsLayer below.
+      var streamLayer = new StreamLayer({
+        url: "https://geoeventsample1.esri.com:6443/arcgis/rest/services/LABus/StreamServer",
+        purgeOptions: { 
+          displayCount: 1000,
+          maxObservations: 5
+         },
+         spatialReference: {
+          wkid: 4326
+        },
+        renderer: busRenderer,
+        popupTemplate: {
+          title: "Bus {id}",
+          content: [
+            {
+              type: "fields",
+              fieldInfos: [
+                { fieldName: "route_id", label: "Route" },
+                { fieldName: "heading", label: "Heading (\u00B0)" },
+                { fieldName: "seconds_since_report", label: "Report Age (sec)" },
+                { fieldName: "run_id", label: "Run ID" }
+              ]
+            }
+          ]
+        }
+      });
+
+      // ----------------------------------------------------------------
+      // Trail layer: previous positions as faded circles
+      // ----------------------------------------------------------------
+      // Sits below the StreamLayer in the map's layer stack so live
+      // chevrons draw on top. Opacity is set on the layer itself —
+      // individual trail dots inherit it.
+      var trailLayer = new GraphicsLayer({ opacity: 0.3 });
+
+      // ---- Map + View ----
+      // Start with NO layers and no Esri basemap. FuseSimple drives
+      // view init when FuseSimple.create() runs, so we don't need a
+      // basemap to bootstrap Esri. All operational layers are added
+      // *after* FuseSimple.create() resolves — adding them before
+      // would let their extents override the consumer's center/zoom.
+      var map = new EsriMap({ layers: [] });
+
+      var view = new MapView({
+        container: "viewDiv",
+        map: map,
+        center: [-118.25, 34.05],
+        zoom: 11,
+        spatialReference: { wkid: 3857 },
+        popup: { dockEnabled: false }
+      });
+
+      // ---- Home widget ----
+      view.ui.add(new Home({ view: view }), "top-left");
+
+      // ----------------------------------------------------------------
+      // FuseSimple: LA PMTiles basemap
+      // ----------------------------------------------------------------
+      var res = await fetch(FUSESIMPLE + "/assets/json/protomaps-light-full.json");
+      var style = await res.json();
+      style.sources.protomaps.url = "pmtiles://" + TILES + "/la.pmtiles";
+
+      var fuse = await FuseSimple.create({
+        basemap: {
+          engine: "maplibre",
+          source: TILES + "/la.pmtiles",
+          style: style
+        },
+        operational: {
+          engine: "esri",
+          view: view
+        }
+      });
+
+      // Now that the view is initialized at LA zoom 11, add the
+      // operational layers. Adding them before FuseSimple.create()
+      // would let their extents fight the consumer's center/zoom.
+      map.add(trailLayer);
+      map.add(streamLayer);
+
+      // ----------------------------------------------------------------
+      // Trail management
+      // ----------------------------------------------------------------
+      // Every 3 seconds, poll the StreamLayerView for current bus
+      // positions. If a bus has moved since the last poll, add its
+      // previous position to the trail layer as a small faded circle.
+      // Each bus keeps at most MAX_TRAIL trail points; oldest are
+      // removed when the cap is exceeded.
+
+      var MAX_TRAIL = 10;
+      var lastPositions = {};   // busId -> { lng, lat, routeId }
+      var busTrails = {};       // busId -> Graphic[]
+
+      var layerView = await view.whenLayerView(streamLayer);
+      var pollTimer = null;
+      var isStreaming = true;
+
+      function startPolling() {
+        if (pollTimer) return;
+        pollTimer = setInterval(async function () {
+          try {
+            var result = await layerView.queryFeatures();
+            var features = result.features;
+            var routes = new Set();
+            var active = 0;
+            var stale = 0;
+
+            features.forEach(function (f) {
+              var a = f.attributes;
+              var busId = a.id;
+              var lng = a.longitude;
+              var lat = a.latitude;
+              var routeId = a.route_id;
+
+              routes.add(routeId);
+              if (a.seconds_since_report < 120) { active++; } else { stale++; }
+
+              // Compare with last known position — if moved, add trail dot
+              var prev = lastPositions[busId];
+              if (prev && (prev.lng !== lng || prev.lat !== lat)) {
+                var trailGraphic = new Graphic({
+                  geometry: {
+                    type: "point",
+                    longitude: prev.lng,
+                    latitude: prev.lat
+                  },
+                  symbol: {
+                    type: "simple-marker",
+                    style: "circle",
+                    size: 5,
+                    color: routeColor(prev.routeId),
+                    outline: null
+                  }
+                });
+
+                if (!busTrails[busId]) busTrails[busId] = [];
+                busTrails[busId].push(trailGraphic);
+                trailLayer.add(trailGraphic);
+
+                // Cap trail length per bus
+                if (busTrails[busId].length > MAX_TRAIL) {
+                  var old = busTrails[busId].shift();
+                  trailLayer.remove(old);
+                }
+              }
+
+              lastPositions[busId] = { lng: lng, lat: lat, routeId: routeId };
+            });
+
+            // ---- Update stats panel ----
+            document.getElementById("busCount").textContent = features.length;
+            document.getElementById("routeCount").textContent = routes.size;
+            document.getElementById("activeCount").textContent = active;
+            document.getElementById("staleCount").textContent = stale;
+
+            document.getElementById("statusDot").className = "status-dot connected";
+            document.getElementById("statusText").textContent = "Connected";
+
+          } catch (err) {
+            document.getElementById("statusDot").className = "status-dot disconnected";
+            document.getElementById("statusText").textContent = "Disconnected";
+          }
+        }, 3000);
+      }
+
+      function stopPolling() {
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      }
+
+      // ----------------------------------------------------------------
+      // Toggle: add/remove stream layer
+      // ----------------------------------------------------------------
+      var toggleBtn = document.getElementById("toggleBtn");
+
+      toggleBtn.addEventListener("click", async function () {
+        if (isStreaming) {
+          // Remove stream + trails
+          stopPolling();
+          map.remove(streamLayer);
+          streamLayer.destroy();
+          streamLayer = null;
+          layerView = null;
+          trailLayer.removeAll();
+          lastPositions = {};
+          busTrails = {};
+
+          // Reset stats
+          document.getElementById("busCount").textContent = "\u2014";
+          document.getElementById("routeCount").textContent = "\u2014";
+          document.getElementById("activeCount").textContent = "\u2014";
+          document.getElementById("staleCount").textContent = "\u2014";
+          document.getElementById("statusDot").className = "status-dot disconnected";
+          document.getElementById("statusText").textContent = "Disconnected";
+
+          toggleBtn.textContent = "Add stream layer";
+          toggleBtn.classList.remove("active");
+          isStreaming = false;
+        } else {
+          // Re-create stream layer
+          toggleBtn.textContent = "Connecting...";
+          document.getElementById("statusDot").className = "status-dot connecting";
+          document.getElementById("statusText").textContent = "Connecting...";
+
+          streamLayer = new StreamLayer({
+            url: "https://geoeventsample1.esri.com:6443/arcgis/rest/services/LABus/StreamServer",
+            purgeOptions: { displayCount: 1000, maxObservations: 5 },
+            spatialReference: { wkid: 4326 },
+            renderer: busRenderer,
+            popupTemplate: {
+              title: "Bus {id}",
+              content: [{
+                type: "fields",
+                fieldInfos: [
+                  { fieldName: "route_id", label: "Route" },
+                  { fieldName: "heading", label: "Heading (\u00B0)" },
+                  { fieldName: "seconds_since_report", label: "Report Age (sec)" },
+                  { fieldName: "run_id", label: "Run ID" }
+                ]
+              }]
+            }
+          });
+
+          map.add(streamLayer);
+          layerView = await view.whenLayerView(streamLayer);
+          startPolling();
+
+          toggleBtn.textContent = "Remove stream layer";
+          toggleBtn.classList.add("active");
+          isStreaming = true;
+        }
+      });
+
+      // Start polling on initial load
+      startPolling();
+    </script>
+  </body>
+</html>
