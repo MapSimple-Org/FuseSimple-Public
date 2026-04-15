@@ -8,6 +8,16 @@ FuseSimple stacks a hidden MapLibre GL JS basemap under a transparent Esri MapVi
 
 **Reference:** [API docs](docs/API.md) · [Flow docs](docs/flows/) · [Changelog](CHANGELOG.md)
 
+## Live demos
+
+Three hosted demos exercise the library against real data. No install, just a browser:
+
+- **[King County Parcels](https://fusesimple.mapsimple.org/demos/king-county.html)** — dual-source parcel layers proving pixel-perfect alignment between the two engines. Web-component pattern.
+- **[Feature Clustering](https://fusesimple.mapsimple.org/demos/clustering.html)** — Esri's built-in clustering on power-plant data, on a FuseSimple basemap. Classic `MapView` pattern.
+- **[LA Buses](https://fusesimple.mapsimple.org/demos/la-buses.html)** — real-time `StreamLayer` over a FuseSimple basemap, with rotating markers and live connection status.
+
+Source for all three lives under [`demo/showcase/`](demo/showcase/) — single-file HTML, no build tools. See [`demo/showcase/README.md`](demo/showcase/README.md) for what each one demonstrates and a testing checklist.
+
 ## Getting Started
 
 Three things to bring: a PMTiles file, an Esri MapView, and your data.
