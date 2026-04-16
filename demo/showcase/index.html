@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FuseSimple Demos</title>
+    <meta name="description" content="Live demos of PMTiles basemaps under the ArcGIS Maps SDK for JavaScript, powered by FuseSimple." />
+
+    <style>
+      /* ---- Reset / base ------------------------------------------ */
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 16px;
+        line-height: 1.6;
+        color: #333;
+        background: #ffffff;
+      }
+
+      a { color: #187089; text-decoration: none; }
+      a:hover { color: #0e4b5c; }
+
+      img { max-width: 100%; height: auto; display: block; }
+
+      h1, h2, h3 { margin: 0 0 0.4em; font-weight: 700; line-height: 1.25; color: #1a1a1a; }
+      h1 { font-size: 2rem; }
+      h2 { font-size: 1.5rem; }
+      p { margin: 0 0 1em; }
+
+      .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+
+      /* ---- Header ------------------------------------------------ */
+      .site-header {
+        border-bottom: 1px solid #e0e0e0;
+        background: #ffffff;
+      }
+
+      .site-header .container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-top: 18px;
+        padding-bottom: 18px;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+
+      .site-logo img {
+        height: 44px;
+        width: auto;
+      }
+
+      .site-nav ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        gap: 26px;
+      }
+
+      .site-nav a {
+        color: #333;
+        font-weight: 500;
+        font-size: 15px;
+      }
+
+      .site-nav a:hover { color: #187089; }
+
+      .nav-toggle {
+        display: none;
+        background: none;
+        border: 1px solid #d0d0d0;
+        border-radius: 4px;
+        padding: 8px 10px;
+        cursor: pointer;
+        font-size: 18px;
+        line-height: 1;
+      }
+
+      /* ---- Intro ------------------------------------------------- */
+      .intro {
+        padding: 56px 0 32px;
+      }
+
+      .intro p {
+        font-size: 18px;
+        color: #555;
+        max-width: 780px;
+      }
+
+      .intro-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        margin-top: 10px;
+        font-size: 15px;
+      }
+
+      .intro-actions a {
+        font-weight: 500;
+      }
+
+      .intro-actions a::before {
+        content: "→";
+        display: inline-block;
+        margin-right: 6px;
+      }
+
+      /* ---- Demo cards ------------------------------------------- */
+      .demos {
+        padding: 16px 0 60px;
+      }
+
+      .demo-card {
+        display: block;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        background: #ffffff;
+        margin-bottom: 2rem;
+        overflow: hidden;
+        transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+        text-decoration: none;
+        color: inherit;
+      }
+
+      .demo-card:hover {
+        border-color: #187089;
+        box-shadow: 0 6px 20px rgba(24, 112, 137, 0.15);
+        transform: translateY(-3px);
+      }
+
+      .demo-card .thumb {
+        aspect-ratio: 930 / 620;
+        width: 100%;
+        background: linear-gradient(135deg, #e8edf0, #cfd8dd);
+        overflow: hidden;
+      }
+
+      .demo-card .thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .demo-card .body {
+        padding: 24px 28px 28px;
+      }
+
+      .demo-card h2 {
+        margin-bottom: 0.25em;
+        font-size: 1.5rem;
+        color: #1a1a1a;
+      }
+
+      .demo-card:hover h2 {
+        color: #187089;
+      }
+
+      .demo-card .meta {
+        color: #888;
+        font-size: 13px;
+        margin-bottom: 12px;
+      }
+
+      .demo-card .excerpt {
+        color: #444;
+        font-size: 15.5px;
+        line-height: 1.6;
+      }
+
+      .demo-card .excerpt-cta {
+        color: #187089;
+        font-weight: 500;
+      }
+
+      /* ---- Available PMTiles ------------------------------------ */
+      .tiles {
+        background: #f4f4f4;
+        padding: 48px 0;
+        border-top: 1px solid #e0e0e0;
+        border-bottom: 1px solid #e0e0e0;
+      }
+
+      .tiles h2 {
+        margin-bottom: 0.6em;
+      }
+
+      .tiles-list {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 1em;
+        font-size: 15.5px;
+      }
+
+      .tiles-list li {
+        padding: 8px 0;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .tiles-list li:last-child { border-bottom: none; }
+
+      .tiles-list code {
+        background: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 3px;
+        padding: 2px 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 13.5px;
+      }
+
+      .tiles-list .meta {
+        color: #666;
+        font-size: 14px;
+      }
+
+      .tiles-note {
+        color: #555;
+        font-size: 14.5px;
+        margin-top: 10px;
+      }
+
+      /* ---- Footer ----------------------------------------------- */
+      .site-footer {
+        background: #0e4b5c;
+        color: #e6f0f2;
+        padding: 32px 0;
+        font-size: 14px;
+      }
+
+      .site-footer a { color: #9fd4e0; }
+      .site-footer a:hover { color: #ffffff; }
+
+      .site-footer .container {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 14px;
+      }
+
+      .footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+      }
+
+      /* ---- Responsive ------------------------------------------- */
+      @media (max-width: 768px) {
+        h1 { font-size: 1.65rem; }
+        .intro { padding: 40px 0 20px; }
+        .intro p { font-size: 16.5px; }
+
+        .demo-card .body { padding: 20px; }
+        .demo-card h2 { font-size: 1.25rem; }
+      }
+
+      @media (max-width: 600px) {
+        .nav-toggle { display: inline-block; }
+
+        .site-nav {
+          flex-basis: 100%;
+          display: none;
+        }
+
+        .site-nav.open { display: block; }
+
+        .site-nav ul {
+          flex-direction: column;
+          gap: 0;
+          padding-top: 10px;
+        }
+
+        .site-nav li {
+          border-top: 1px solid #eee;
+        }
+
+        .site-nav a {
+          display: block;
+          padding: 12px 0;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+
+    <!-- ====================================================== -->
+    <!-- Header                                                 -->
+    <!-- ====================================================== -->
+    <header class="site-header">
+      <div class="container">
+        <a class="site-logo" href="https://mapsimple.org" target="_blank" rel="noopener">
+          <img src="https://mapsimple.org/wp-content/uploads/2026/03/mapsimple-logo-600w.png" alt="MapSimple" />
+        </a>
+
+        <button class="nav-toggle" aria-expanded="false" aria-controls="primary-nav" type="button">&#9776;</button>
+
+        <nav class="site-nav" id="primary-nav" aria-label="Primary">
+          <ul>
+            <li><a href="https://mapsimple.org" target="_blank" rel="noopener">Home</a></li>
+            <li><a href="https://mapsimple.org/about/" target="_blank" rel="noopener">About</a></li>
+            <li><a href="https://mapsimple.org/samples/" target="_blank" rel="noopener">Samples</a></li>
+            <li><a href="https://mapsimple.org/blog/" target="_blank" rel="noopener">Blog</a></li>
+            <li><a href="https://mapsimple.org/contact/" target="_blank" rel="noopener">Contact</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <!-- ====================================================== -->
+    <!-- Intro                                                  -->
+    <!-- ====================================================== -->
+    <section class="intro">
+      <div class="container">
+        <h1>FuseSimple Demos</h1>
+        <p>
+          Live demos of PMTiles basemaps under the ArcGIS Maps SDK for JavaScript.
+          Each demo is a single HTML file — view source on any of them to see the full implementation.
+        </p>
+
+        <div class="intro-actions">
+          <a href="https://github.com/MapSimple-Org/FuseSimple-Public" target="_blank" rel="noopener">GitHub repo</a>
+          <a href="https://community.esri.com/t5/arcgis-javascript-maps-sdk-questions/using-pmtiles-as-a-basemap-in-the-arcgis-maps-sdk/m-p/1696620" target="_blank" rel="noopener">Esri Community</a>
+          <a href="https://github.com/MapSimple-Org/FuseSimple-Public/blob/main/README.md" target="_blank" rel="noopener">README</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ====================================================== -->
+    <!-- Demo cards                                             -->
+    <!-- ====================================================== -->
+    <section class="demos">
+      <div class="container">
+
+        <a class="demo-card" href="king-county.html">
+          <div class="thumb">
+            <img src="images/king-county-thumb.webp" alt="King County Parcels demo thumbnail" loading="lazy" />
+          </div>
+          <div class="body">
+            <h2>King County Parcels &mdash; Dual-Engine Alignment</h2>
+            <div class="meta">by Adam Cabrera &middot; April 15, 2026</div>
+            <p class="excerpt">
+              Two parcel layers rendered by two different engines over the same geography. Red outlines drawn by MapLibre from GeoJSON, shaded polygons drawn by Esri from a FeatureLayer in ArcGIS Online. Both trace identical King County parcel boundaries. Toggle each independently to confirm pixel-perfect alignment between the two canvases. Uses the <code>&lt;arcgis-map&gt;</code> web component pattern&hellip;
+              <span class="excerpt-cta">King County Parcels</span>
+            </p>
+          </div>
+        </a>
+
+        <a class="demo-card" href="clustering.html">
+          <div class="thumb">
+            <img src="images/clustering-thumb.webp" alt="Pacific Northwest Power Plants clustering demo thumbnail" loading="lazy" />
+          </div>
+          <div class="body">
+            <h2>Pacific Northwest Power Plants &mdash; Clustering &amp; Arcade</h2>
+            <div class="meta">by Adam Cabrera &middot; April 15, 2026</div>
+            <p class="excerpt">
+              Power plants from ArcGIS Online rendered with Esri's built-in featureReduction clustering on a PMTiles basemap covering Washington, Oregon, and Idaho. Cluster bubbles use Arcade expressions to aggregate coal-fueled plants within each group. Click a cluster to see counts, megawatt totals, and coal ratios in the popup. Shows FuseSimple doesn't interfere with advanced Esri features&hellip;
+              <span class="excerpt-cta">PNW Power Plant Clustering</span>
+            </p>
+          </div>
+        </a>
+
+        <a class="demo-card" href="la-buses.html">
+          <div class="thumb">
+            <img src="images/la-buses-thumb.webp" alt="LA Metro Buses stream layer demo thumbnail" loading="lazy" />
+          </div>
+          <div class="body">
+            <h2>LA Metro Buses &mdash; Real-Time StreamLayer</h2>
+            <div class="meta">by Adam Cabrera &middot; April 15, 2026</div>
+            <p class="excerpt">
+              Fictitious LA Metro bus positions streamed via WebSocket from Esri's GeoEvent sample server. Buses render as rotated chevron markers color-coded by route using an Arcade hash. A trail system polls the StreamLayerView and drops faded circles at previous positions. Shows FuseSimple handles the hardest category of Esri layer: live WebSocket data&hellip;
+              <span class="excerpt-cta">LA Metro Buses</span>
+            </p>
+          </div>
+        </a>
+
+      </div>
+    </section>
+
+    <!-- ====================================================== -->
+    <!-- Available PMTiles                                      -->
+    <!-- ====================================================== -->
+    <section class="tiles">
+      <div class="container">
+        <h2>Available PMTiles</h2>
+        <p>The tile archives used by the demos above are publicly hosted and free to use for experimentation.</p>
+
+        <ul class="tiles-list">
+          <li>
+            <code>king_county.pmtiles</code>
+            <span class="meta">King County, WA &middot; 104 MB &middot; zoom 0&ndash;15</span>
+          </li>
+          <li>
+            <code>la.pmtiles</code>
+            <span class="meta">LA Metro &middot; 199 MB &middot; zoom 0&ndash;15</span>
+          </li>
+          <li>
+            <code>pnw.pmtiles</code>
+            <span class="meta">WA / OR / ID &middot; 1.2 GB &middot; zoom 0&ndash;15</span>
+          </li>
+        </ul>
+
+        <p class="tiles-note">
+          All hosted at <a href="https://tiles.mapsimple.org/" target="_blank" rel="noopener"><code>https://tiles.mapsimple.org/</code></a>.
+        </p>
+      </div>
+    </section>
+
+    <!-- ====================================================== -->
+    <!-- Footer                                                 -->
+    <!-- ====================================================== -->
+    <footer class="site-footer">
+      <div class="container">
+        <div>&copy; 2026 Mapsimple.org. All rights reserved.</div>
+        <div class="footer-links">
+          <a href="mailto:adam@mapsimple.org">adam@mapsimple.org</a>
+          <a href="https://github.com/MapSimple-Org/FuseSimple-Public" target="_blank" rel="noopener">GitHub</a>
+          <span>&copy; OpenStreetMap contributors. ODbL.</span>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      // Mobile menu toggle — the only JS on the page.
+      (function () {
+        var btn = document.querySelector(".nav-toggle");
+        var nav = document.querySelector(".site-nav");
+        if (!btn || !nav) return;
+        btn.addEventListener("click", function () {
+          var open = nav.classList.toggle("open");
+          btn.setAttribute("aria-expanded", String(open));
+        });
+      })();
+    </script>
+
+  </body>
+</html>
