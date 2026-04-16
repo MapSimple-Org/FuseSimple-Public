@@ -28,6 +28,11 @@ concurrency:
 
 jobs:
   deploy:
+    # Only run on the public repo. The workflow file also lives in the private
+    # source repo (FuseSimple) so the staging script can ship it to the public
+    # repo, but we don't want it running there — no CDN secrets, no dist/
+    # artifact committed.
+    if: github.repository == 'MapSimple-Org/FuseSimple-Public'
     runs-on: ubuntu-latest
 
     steps:
