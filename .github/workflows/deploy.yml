@@ -1,0 +1,64 @@
+# GitHub Actions workflow — Deploy FuseSimple assets to the CDN
+#
+# Runs on every push to `main` on the public repo (MapSimple-Org/FuseSimple-Public).
+# Uploads dist/ and demo/showcase/ contents to fusesimple.mapsimple.org via FTPS.
+# Incremental sync — only changed files actually transfer, thanks to a state file
+# the action maintains on the server.
+#
+# Secrets required (Settings → Secrets and variables → Actions):
+#   CDN_HOST  Hostinger FTP IP (e.g. 89.117.9.200)
+#   CDN_USER  FTP subaccount username (e.g. u516850753.ghfusesimple)
+#   CDN_PASS  FTP password
+#   CDN_PATH  Server-side target path (e.g. / — scoped account lands in fusesimple folder)
+#
+# Manual re-run: Actions tab → "Deploy to CDN" → "Run workflow"
+# (useful if you want to resync without making a commit.)
+
+name: Deploy to CDN
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Only one deploy at a time. Second push while first is running waits in line.
+concurrency:
+  group: cdn-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build deploy tree
+        run: |
+          mkdir -p deploy/dist deploy/demos
+          cp -r dist/* deploy/dist/
+          cp -r demo/showcase/* deploy/demos/
+          # GitHub-flavored README, not useful served over HTTP.
+          rm -f deploy/demos/README.md
+          echo "--- Files to deploy ---"
+          find deploy -type f | sort
+
+      - name: Sync to Hostinger via FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.CDN_HOST }}
+          username: ${{ secrets.CDN_USER }}
+          password: ${{ secrets.CDN_PASS }}
+          port: 21
+          protocol: ftps
+          # Hostinger's cert is issued for *.hstgr.io; we connect by IP.
+          # "loose" accepts the cert so the upload proceeds instead of bailing.
+          security: loose
+          local-dir: ./deploy/
+          server-dir: ${{ secrets.CDN_PATH }}
+          # Belt-and-suspenders — the build step controls the tree, but
+          # this blocks any stray macOS metadata or git leftovers.
+          exclude: |
+            **/.DS_Store
+            **/.git*
